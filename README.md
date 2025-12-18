@@ -32,12 +32,11 @@ This MCP (Model Context Protocol) server provides tools for common operations wi
 
 ## Installation
 
-1. Clone this repository:
+1. From this repo root:
 
-    ```bash
-    git clone https://github.com/heuristech/gmail-mcp-server.git
-    cd gmail-mcp-server
-    ```
+  ```bash
+  cd mcp-serveur-gmail
+  ```
 
 2. Create a virtual environment and install the package in development mode:
 
@@ -70,7 +69,7 @@ This will:
 
 **Create .env**  
 ```bash
-copy example.env .env
+cp example.env .env
 ```
 
 Setup the corresponding value using what you received in the previous step.
@@ -105,7 +104,7 @@ MCP server configuration:
       "command": "uv",
       "args": [
           "--directory",
-          "/:your.path.to/gmail-mcp-server/server.py",
+          "/:your.path.to/mcp-serveur-gmail",
           "run",
           "server.py"
       ],

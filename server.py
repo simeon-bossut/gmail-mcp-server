@@ -5,6 +5,7 @@ Provides tools for common operations with Gmail (e.g., send_mail)
 import os
 from base64 import urlsafe_b64encode
 from typing import Any, Optional, Dict
+from email.message import EmailMessage
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -13,8 +14,7 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
     "gmail-mcp-server",
-    version="0.1.0",
-    description="Provides tools for common operations with Gmail (e.g., send_mail)"
+    instructions="Provides tools for common operations with Gmail (e.g., send_mail)",
 )
 
 class GoogleClient:
@@ -62,19 +62,19 @@ async def send_mail(
     :returns: Dict with 'content' list or error flag.
     """
     try:
-        # Build MIME message headers
-        headers = [
-            'Content-Type: text/plain; charset="UTF-8"',
-            'MIME-Version: 1.0',
-            f"To: {to}",
-            f"Cc: {cc}" if cc else None,
-            f"Bcc: {bcc}" if bcc else None,
-            f"Subject: {subject}",
-        ]
-        message = "\r\n".join(h for h in headers if h) + "\r\n\r\n" + body
+        # Build MIME message using EmailMessage to ensure proper UTF-8 encoding
+        msg = EmailMessage()
+        msg['To'] = to
+        if cc:
+            msg['Cc'] = cc
+        if bcc:
+            msg['Bcc'] = bcc
+        msg['Subject'] = subject
+        # Plain text body with utf-8 charset. If HTML is needed, use add_alternative.
+        msg.set_content(body, subtype='plain', charset='utf-8')
 
-        # base64url encode and strip padding
-        raw = urlsafe_b64encode(message.encode("utf-8")).decode("ascii").rstrip("=")
+        # as_bytes() will include proper headers and charset; encode to base64url without padding
+        raw = urlsafe_b64encode(msg.as_bytes()).decode('ascii').rstrip('=')
 
         # get google client (from env_override or os.environ)
         google_client = get_google_client(env_override)
