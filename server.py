@@ -17,6 +17,11 @@ mcp = FastMCP(
     instructions="Provides tools for common operations with Gmail (e.g., send_mail)",
 )
 
+def _b64url_decode(data_b64: str) -> bytes:
+    # base64url decode with padding
+    padded = data_b64 + "=" * ((4 - len(data_b64) % 4) % 4)
+    return urlsafe_b64encode(b"").__class__(b"") if False else __import__('base64').urlsafe_b64decode(padded)
+
 class GoogleClient:
     """Encapsulates a Gmail API client."""
     def __init__(self, client_id: str, client_secret: str, refresh_token: str):
@@ -103,6 +108,88 @@ async def send_mail(
             ],
             "isError": True,
         }
+
+
+
+@mcp.tool(name="get_latest_message", description="Get the latest message from INBOX (subject, from, date, snippet, body)")
+async def get_latest_message(env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    client = get_google_client(env_override)
+    gmail = client.gmail
+    # list latest
+    lst = gmail.users().messages().list(userId="me", maxResults=1, labelIds=["INBOX"]).execute()
+    messages = lst.get("messages") or []
+    if not messages:
+        return {"found": False}
+    msg_id = messages[0]["id"]
+    msg = gmail.users().messages().get(userId="me", id=msg_id, format="full").execute()
+    payload = msg.get("payload", {})
+    headers = {h.get("name"): h.get("value") for h in payload.get("headers", [])}
+    subject = headers.get("Subject")
+    from_hdr = headers.get("From")
+    date_hdr = headers.get("Date")
+    snippet = msg.get("snippet")
+
+    # extract text/plain
+    body = None
+    parts = payload.get("parts")
+    if parts:
+        for p in parts:
+            if p.get("mimeType") == "text/plain":
+                data = p.get("body", {}).get("data")
+                if data:
+                    try:
+                        raw = __import__('base64').urlsafe_b64decode(data + "=" * ((4 - len(data) % 4) % 4))
+                        body = raw.decode("utf-8", errors="replace")
+                        break
+                    except Exception:
+                        body = ""
+    else:
+        data = payload.get("body", {}).get("data")
+        if data:
+            try:
+                raw = __import__('base64').urlsafe_b64decode(data + "=" * ((4 - len(data) % 4) % 4))
+                body = raw.decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+
+    return {
+        "found": True,
+        "id": msg_id,
+        "subject": subject,
+        "from": from_hdr,
+        "date": date_hdr,
+        "snippet": snippet,
+        "body": body,
+    }
+
+
+@mcp.tool(name="list_labels", description="List Gmail labels for the account")
+async def list_labels(env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    client = get_google_client(env_override)
+    gmail = client.gmail
+    resp = gmail.users().labels().list(userId="me").execute()
+    return resp
+
+
+@mcp.tool(name="create_label", description="Create a Gmail label. Provide {'name': 'LabelName'}")
+async def create_label(label: Dict[str, Any], env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    client = get_google_client(env_override)
+    gmail = client.gmail
+    resp = gmail.users().labels().create(userId="me", body=label).execute()
+    return resp
+
+
+@mcp.tool(name="modify_message_labels", description="Modify labels on a message: {'addLabelIds': [...], 'removeLabelIds': [...]}")
+async def modify_message_labels(message_id: str, mods: Dict[str, Any], env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    client = get_google_client(env_override)
+    gmail = client.gmail
+    resp = gmail.users().messages().modify(userId="me", id=message_id, body=mods).execute()
+    return resp
+
+
+@mcp.tool(name="mark_read", description="Mark a message as read (remove UNREAD)")
+async def mark_read(message_id: str, env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    return await modify_message_labels(message_id, {"removeLabelIds": ["UNREAD"]}, env_override=env_override)
 
 if __name__ == "__main__":
     mcp.run(transport=os.getenv("TRANSPORT", "stdio"))
