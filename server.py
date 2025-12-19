@@ -191,5 +191,37 @@ async def modify_message_labels(message_id: str, mods: Dict[str, Any], env_overr
 async def mark_read(message_id: str, env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     return await modify_message_labels(message_id, {"removeLabelIds": ["UNREAD"]}, env_override=env_override)
 
+
+@mcp.tool(name="refresh_gmail_token", description="Ask backend to refresh the stored Gmail refresh_token for the current user")
+async def refresh_gmail_token(env_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Calls the Paperslate API endpoint POST /api/connectors/gmail/refresh.
+
+    env_override may contain:
+      - BASE_API_URL: full base URL of the backend (e.g. https://api.example.com)
+      - API_TOKEN: the user's API token to authenticate the request (sent as x-api-token header)
+    If not provided, environment variables of the same names are used. Returns parsed JSON from backend.
+    """
+    source = env_override if env_override is not None else os.environ
+    base = source.get("BASE_API_URL") or source.get("API_BASE_URL") or os.environ.get("BASE_API_URL") or "http://localhost:8000"
+    api_token = source.get("API_TOKEN") or os.environ.get("API_TOKEN")
+    if not api_token:
+        return {"isError": True, "error": "Missing API_TOKEN in env_override or environment"}
+
+    url = f"{base.rstrip('/')}/api/connectors/gmail/refresh"
+    try:
+        import requests as _requests
+        resp = _requests.post(url, headers={"x-api-token": api_token}, timeout=20)
+        try:
+            data = resp.json()
+        except Exception:
+            return {"isError": True, "error": "Non-JSON response from backend", "body": resp.text}
+
+        if resp.status_code >= 400:
+            return {"isError": True, "status_code": resp.status_code, "details": data}
+
+        return {"isError": False, "result": data}
+    except Exception as e:
+        return {"isError": True, "error": str(e)}
+
 if __name__ == "__main__":
     mcp.run(transport=os.getenv("TRANSPORT", "stdio"))
